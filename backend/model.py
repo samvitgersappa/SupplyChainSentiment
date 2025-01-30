@@ -10,17 +10,23 @@ sentiment_data = pd.read_csv(
     "D:/College/5thsemel/tobolt/project/market_trends_dataset.csv"
 ).head(5000)
 
+print(warehouse_data.head())
+
 
 class WarehousePredictor:
     def __init__(self):
         self.model = RandomForestRegressor(n_estimators=100, random_state=42)
         self.le_item = LabelEncoder()
         self.le_trend = LabelEncoder()
+        # Force reload data each time
+        self.data = pd.read_csv("D:/College/5thsemel/tobolt/project/data1.csv").head(
+            5000
+        )
         self.train_model()
 
     def train_model(self):
-        df = pd.DataFrame(warehouse_data)
-
+        # Debug print
+        df = pd.DataFrame(self.data)
         # Encode categorical variables
         df["Item_Encoded"] = self.le_item.fit_transform(df["Item"])
         df["Market_Trend_Encoded"] = self.le_trend.fit_transform(df["Market Trend"])
