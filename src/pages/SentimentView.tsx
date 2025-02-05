@@ -231,7 +231,11 @@ export const SentimentView: React.FC = () => {
           // Calculate sum of raw values
           const sum = Object.values(baseValues).reduce((a, b) => a + b, 0);
 
-          // Normalize values to sum to 100
+          // Adjust confidence based on market event
+          const confidenceBoost = currentMarketEvent?.type === 'positive' ? 0.3 :
+            currentMarketEvent?.type === 'negative' ? -0.2 : 0;
+
+          // Normalize values and adjust confidence
           return {
             historicalPriceTrends: (baseValues.historicalPriceTrends / sum) * 100,
             tradingVolumeAnalysis: (baseValues.tradingVolumeAnalysis / sum) * 100,
@@ -239,7 +243,11 @@ export const SentimentView: React.FC = () => {
             supplyChainMetrics: (baseValues.supplyChainMetrics / sum) * 100,
             technicalIndicators: (baseValues.technicalIndicators / sum) * 100,
             confidence: Math.max(30, Math.min(95,
-              currentMarketEvent?.type === 'positive' ? 75 : 45
+              currentMarketEvent?.type === 'positive' ?
+                85 + (Math.random() * 10) : // Higher confidence for positive events
+                currentMarketEvent?.type === 'negative' ?
+                  45 + (Math.random() * 15) : // Lower confidence for negative events
+                  60 + (Math.random() * 20)   // Baseline confidence
             )),
           };
         });
@@ -305,35 +313,45 @@ export const SentimentView: React.FC = () => {
             title: "Historical Price Trends",
             weight: 25,
             value: metrics.historicalPriceTrends,
-            confidence: metrics.historicalPriceTrends * 0.9, // Dynamic confidence based on value
+            confidence: currentMarketEvent?.type === 'positive' ?
+              Math.min(95, metrics.historicalPriceTrends * 0.95) :
+              metrics.historicalPriceTrends * 0.9,
             icon: <TrendingUp className="h-5 w-5" />
           },
           {
             title: "Trading Volume Analysis",
             weight: 20,
             value: metrics.tradingVolumeAnalysis,
-            confidence: metrics.tradingVolumeAnalysis * 0.85,
+            confidence: currentMarketEvent?.type === 'positive' ?
+              Math.min(95, metrics.tradingVolumeAnalysis * 0.90) :
+              metrics.tradingVolumeAnalysis * 0.85,
             icon: <BarChart2 className="h-5 w-5" />
           },
           {
             title: "Market Events Impact",
             weight: 25,
             value: metrics.marketEventsImpact,
-            confidence: metrics.marketEventsImpact * 0.8,
+            confidence: currentMarketEvent?.type === 'positive' ?
+              Math.min(95, metrics.marketEventsImpact * 0.93) :
+              metrics.marketEventsImpact * 0.8,
             icon: <Activity className="h-5 w-5" />
           },
           {
             title: "Supply Chain Metrics",
             weight: 15,
             value: metrics.supplyChainMetrics,
-            confidence: metrics.supplyChainMetrics * 0.75,
+            confidence: currentMarketEvent?.type === 'positive' ?
+              Math.min(95, metrics.supplyChainMetrics * 0.88) :
+              metrics.supplyChainMetrics * 0.75,
             icon: <LineChart className="h-5 w-5" />
           },
           {
             title: "Technical Indicators",
-            weight: 15, // Adjusted to make total 100%
+            weight: 15,
             value: metrics.technicalIndicators,
-            confidence: metrics.technicalIndicators * 0.7,
+            confidence: currentMarketEvent?.type === 'positive' ?
+              Math.min(95, metrics.technicalIndicators * 0.85) :
+              metrics.technicalIndicators * 0.7,
             icon: <PieChart className="h-5 w-5" />
           },
         ].map((metric, index) => {
@@ -384,14 +402,12 @@ export const SentimentView: React.FC = () => {
               <div className="mt-2 h-1 bg-gray-200 rounded">
                 <div
                   className={`h-full rounded ${currentMarketEvent?.type === 'positive' ? 'bg-green-500' :
-                    currentMarketEvent?.type === 'negative' ? 'bg-red-500' :
-                      'bg-blue-500'
+                      currentMarketEvent?.type === 'negative' ? 'bg-red-500' :
+                        'bg-blue-500'
                     }`}
                   style={{ width: `${metric.value}%` }}
                 />
               </div>
-
-              {/* Add confidence level display */}
               <div className="mt-2">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-sm text-gray-500">Confidence Level</span>
