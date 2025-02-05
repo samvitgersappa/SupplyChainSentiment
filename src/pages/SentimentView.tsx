@@ -41,6 +41,13 @@ const CHART_COLORS = {
   }
 };
 
+const getConfidenceColor = (confidence: number) => {
+  if (confidence >= 0.8) return 'bg-green-500';
+  if (confidence >= 0.6) return 'bg-blue-500';
+  if (confidence >= 0.4) return 'bg-yellow-500';
+  return 'bg-red-500';
+};
+
 interface ChartData {
   name: string;
   value: number;
@@ -56,6 +63,13 @@ interface RiskMetric {
   subject: string;
   value: number;
   fullMark: number;
+}
+
+interface MetricBox {
+  title: string;
+  weight: number;
+  value: number;
+  icon: React.ReactNode;
 }
 
 export interface MarketEvent {
@@ -78,14 +92,13 @@ interface EventIndicatorProps {
 }
 
 export const SentimentView: React.FC = () => {
+  const { isRunning, currentMarketEvent, metrics, setMetrics } = useSimulation();
   const [sentimentData, setSentimentData] = useState<MarketSentiment[]>([]);
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
   const [distributionData, setDistributionData] = useState<ChartData[]>([]);
   const [marketCorrelation, setMarketCorrelation] = useState<MarketCorrelation[]>([]);
   const [riskMetrics, setRiskMetrics] = useState<RiskMetric[]>([]);
   const [impactAnalysis, setImpactAnalysis] = useState<ChartData[]>([]);
-  const { isRunning, setIsRunning, simulationState, currentMarketEvent } = useSimulation();
-
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
   useEffect(() => {
@@ -162,7 +175,12 @@ export const SentimentView: React.FC = () => {
           prevData.map(item => ({
             ...item,
             sentiment: Math.max(0.1, Math.min(1, applyMarketEventImpact(item.sentiment + (Math.random() - 0.5) * 0.1))),
-            trend: Math.random() > 0.5 ? 'up' : 'down'
+            trend: Math.random() > 0.5 ? 'up' : 'down',
+            confidence: Math.max(0.2, Math.min(0.95,
+              (item.confidence || 0.5) +
+              (currentMarketEvent ?
+                (currentMarketEvent.type === 'positive' ? 0.05 : -0.05) : 0) +
+              (Math.random() - 0.5) * 0.1))
           }))
         );
 
@@ -199,6 +217,32 @@ export const SentimentView: React.FC = () => {
             value: Math.max(0, Math.min(100, applyMarketEventImpact(item.value + (Math.random() - 0.5) * 10)))
           }))
         );
+
+        // Update metrics
+        setMetrics(prevMetrics => {
+          const baseValues = {
+            historicalPriceTrends: Math.random() * 100,
+            tradingVolumeAnalysis: Math.random() * 100,
+            marketEventsImpact: Math.random() * 100,
+            supplyChainMetrics: Math.random() * 100,
+            technicalIndicators: Math.random() * 100
+          };
+
+          // Calculate sum of raw values
+          const sum = Object.values(baseValues).reduce((a, b) => a + b, 0);
+
+          // Normalize values to sum to 100
+          return {
+            historicalPriceTrends: (baseValues.historicalPriceTrends / sum) * 100,
+            tradingVolumeAnalysis: (baseValues.tradingVolumeAnalysis / sum) * 100,
+            marketEventsImpact: (baseValues.marketEventsImpact / sum) * 100,
+            supplyChainMetrics: (baseValues.supplyChainMetrics / sum) * 100,
+            technicalIndicators: (baseValues.technicalIndicators / sum) * 100,
+            confidence: Math.max(30, Math.min(95,
+              currentMarketEvent?.type === 'positive' ? 75 : 45
+            )),
+          };
+        });
       }, 2000);
     }
 
@@ -252,6 +296,121 @@ export const SentimentView: React.FC = () => {
             </>
           )}
         </motion.div>
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        {[
+          {
+            title: "Historical Price Trends",
+            weight: 25,
+            value: metrics.historicalPriceTrends,
+            confidence: metrics.historicalPriceTrends * 0.9, // Dynamic confidence based on value
+            icon: <TrendingUp className="h-5 w-5" />
+          },
+          {
+            title: "Trading Volume Analysis",
+            weight: 20,
+            value: metrics.tradingVolumeAnalysis,
+            confidence: metrics.tradingVolumeAnalysis * 0.85,
+            icon: <BarChart2 className="h-5 w-5" />
+          },
+          {
+            title: "Market Events Impact",
+            weight: 25,
+            value: metrics.marketEventsImpact,
+            confidence: metrics.marketEventsImpact * 0.8,
+            icon: <Activity className="h-5 w-5" />
+          },
+          {
+            title: "Supply Chain Metrics",
+            weight: 15,
+            value: metrics.supplyChainMetrics,
+            confidence: metrics.supplyChainMetrics * 0.75,
+            icon: <LineChart className="h-5 w-5" />
+          },
+          {
+            title: "Technical Indicators",
+            weight: 15, // Adjusted to make total 100%
+            value: metrics.technicalIndicators,
+            confidence: metrics.technicalIndicators * 0.7,
+            icon: <PieChart className="h-5 w-5" />
+          },
+        ].map((metric, index) => {
+          const getColorClass = (value: number) => {
+            if (currentMarketEvent?.type === 'positive') {
+              return value > 50 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200';
+            }
+            if (currentMarketEvent?.type === 'negative') {
+              return value < 50 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200';
+            }
+            return 'bg-gray-50 border-gray-200';
+          };
+
+          const getTextColorClass = (value: number) => {
+            if (currentMarketEvent?.type === 'positive') {
+              return value > 50 ? 'text-green-700' : 'text-gray-700';
+            }
+            if (currentMarketEvent?.type === 'negative') {
+              return value < 50 ? 'text-red-700' : 'text-gray-700';
+            }
+            return 'text-gray-700';
+          };
+
+          return (
+            <motion.div
+              key={metric.title}
+              className={`p-4 rounded-lg border ${getColorClass(metric.value)} transition-colors duration-300`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <div className="flex items-center mb-2">
+                <div className={`${getTextColorClass(metric.value)}`}>
+                  {metric.icon}
+                </div>
+                <h3 className="ml-2 font-semibold text-sm text-gray-700">
+                  {metric.title}
+                </h3>
+              </div>
+              <div className="flex justify-between items-center">
+                <div className={`text-2xl font-bold ${getTextColorClass(metric.value)}`}>
+                  {metric.value.toFixed(1)}%
+                </div>
+                <div className="text-sm text-gray-500">
+                  Weight: {metric.weight}%
+                </div>
+              </div>
+              <div className="mt-2 h-1 bg-gray-200 rounded">
+                <div
+                  className={`h-full rounded ${currentMarketEvent?.type === 'positive' ? 'bg-green-500' :
+                    currentMarketEvent?.type === 'negative' ? 'bg-red-500' :
+                      'bg-blue-500'
+                    }`}
+                  style={{ width: `${metric.value}%` }}
+                />
+              </div>
+
+              {/* Add confidence level display */}
+              <div className="mt-2">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-gray-500">Confidence Level</span>
+                  <span className="text-sm font-medium">
+                    {(metric.confidence).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <motion.div
+                    className={`h-2 rounded-full ${getConfidenceColor(metric.confidence / 100)}`}
+                    initial={{ width: '0%' }}
+                    animate={{ width: `${metric.confidence}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -315,45 +474,17 @@ export const SentimentView: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
         >
           <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <AlertTriangle className="h-5 w-5 mr-2 text-indigo-600" />
-            Risk Assessment
-          </h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={riskMetrics}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="subject" />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                <Radar
-                  name="Risk"
-                  dataKey="value"
-                  stroke="#8884d8"
-                  fill="#8884d8"
-                  fillOpacity={0.6}
-                />
-                <Tooltip />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="bg-white p-4 rounded-lg shadow"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
             <BarChartIcon className="h-5 w-5 mr-2 text-indigo-600" />
             Market Correlation
           </h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart>
-                <CartesianGrid />
-                <XAxis type="number" dataKey="x" name="Factor Impact" />
-                <YAxis type="number" dataKey="y" name="Market Response" />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="x" name="Factor X" />
+                <YAxis dataKey="y" name="Factor Y" />
                 <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                <Scatter name="Correlation" data={marketCorrelation} fill="#8884d8" />
+                <Scatter name="Market Correlation" data={marketCorrelation} fill="#8884d8" />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
@@ -365,8 +496,30 @@ export const SentimentView: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
         >
           <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <DollarSign className="h-5 w-5 mr-2 text-indigo-600" />
-            Market Impact Analysis
+            <RadarChart className="h-5 w-5 mr-2 text-indigo-600" />
+            Risk Metrics
+          </h3>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={riskMetrics}>
+                <PolarGrid />
+                <PolarAngleAxis dataKey="subject" />
+                <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                <Radar name="Risk Metrics" dataKey="value" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+                <Legend />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="bg-white p-4 rounded-lg shadow"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <Activity className="h-5 w-5 mr-2 text-indigo-600" />
+            Impact Analysis
           </h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -375,13 +528,14 @@ export const SentimentView: React.FC = () => {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Area type="monotone" dataKey="value" stroke="#82ca9d" fill="#82ca9d" />
+                <Area type="monotone" dataKey="value" stroke="#8884d8" fill="#8884d8" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </motion.div>
       </div>
 
+      {/* Sentiment Analysis Section */}
       <section>
         <SentimentAnalysis sentimentData={sentimentData} />
       </section>

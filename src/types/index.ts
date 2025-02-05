@@ -19,7 +19,9 @@ export interface Warehouse {
 export interface MarketSentiment {
   item: string;
   sentiment: number;
-  trend: 'up' | 'down' | 'stable';
+  trend?: 'up' | 'down';
+  impact?: number;
+  confidence?: number;  // The confidence score is optional
 }
 
 export interface SimulationSpeed {
