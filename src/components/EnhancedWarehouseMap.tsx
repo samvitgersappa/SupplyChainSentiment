@@ -9,6 +9,7 @@ import 'leaflet/dist/leaflet.css';
 interface Props {
     warehouses: Warehouse[];
     simulatedStock: number;
+    selectedEvent: MarketEvent | null;
 }
 
 interface Route {
@@ -47,12 +48,17 @@ const calculateETA = (distance: number, traffic: 'low' | 'medium' | 'high'): num
 const getRouteStyle = (route: Route) => ({
     color: route.status === 'delayed' ? '#EF4444' :
         route.status === 'active' ? '#10B981' : '#6B7280',
-    weight: route.traffic === 'high' ? 4 : route.traffic === 'medium' ? 3 : 2,
+    weight: route.traffic === 'high' ? 4 :
+        route.traffic === 'medium' ? 3 : 2,
     opacity: 0.8,
     dashArray: route.status === 'delayed' ? '5, 10' : undefined
 });
 
-export const EnhancedWarehouseMap: React.FC<Props> = ({ warehouses = [], simulatedStock = 0 }) => {
+export const EnhancedWarehouseMap: React.FC<Props> = ({
+    warehouses = [],
+    simulatedStock = 0,
+    selectedEvent
+}) => {
     const { isRunning } = useSimulation();
     const [routes, setRoutes] = useState<Route[]>([]);
     const center: LatLngExpression = [20.5937, 78.9629];
@@ -86,8 +92,14 @@ export const EnhancedWarehouseMap: React.FC<Props> = ({ warehouses = [], simulat
 
         const newRoutes = warehouses.flatMap((w1, i) =>
             warehouses.slice(i + 1).map(w2 => {
-                const distance = calculateDistance(w1.latitude, w1.longitude, w2.latitude, w2.longitude);
-                const traffic = Math.random() > 0.7 ? 'high' : Math.random() > 0.3 ? 'medium' : 'low';
+                const distance = calculateDistance(
+                    w1.coordinates.lat,
+                    w1.coordinates.lng,
+                    w2.coordinates.lat,
+                    w2.coordinates.lng
+                );
+                const traffic = Math.random() > 0.7 ? 'high' :
+                    Math.random() > 0.3 ? 'medium' : 'low';
                 const eta = calculateETA(distance, traffic);
 
                 return {
@@ -97,7 +109,8 @@ export const EnhancedWarehouseMap: React.FC<Props> = ({ warehouses = [], simulat
                     distance,
                     eta,
                     traffic,
-                    status: Math.random() > 0.7 ? 'delayed' : Math.random() > 0.3 ? 'active' : 'completed'
+                    status: Math.random() > 0.7 ? 'delayed' :
+                        Math.random() > 0.3 ? 'active' : 'completed'
                 };
             })
         );
@@ -161,8 +174,8 @@ export const EnhancedWarehouseMap: React.FC<Props> = ({ warehouses = [], simulat
                         <Polyline
                             key={route.id}
                             positions={[
-                                [route.from.latitude, route.from.longitude],
-                                [route.to.latitude, route.to.longitude]
+                                [route.from.coordinates.lat, route.from.coordinates.lng],
+                                [route.to.coordinates.lat, route.to.coordinates.lng]
                             ]}
                             pathOptions={getRouteStyle(route)}
                         >
@@ -188,16 +201,18 @@ export const EnhancedWarehouseMap: React.FC<Props> = ({ warehouses = [], simulat
                     {warehouses.map((warehouse) => (
                         <Marker
                             key={warehouse.id}
-                            position={[warehouse.latitude, warehouse.longitude]}
+                            position={[warehouse.coordinates.lat, warehouse.coordinates.lng]}
                             icon={defaultIcon}
                         >
                             <Popup>
                                 <div className="p-2">
                                     <h3 className="font-bold">{warehouse.name}</h3>
                                     <p>Stock: {warehouse.inventory?.reduce((sum, item) => sum + item.stock, 0)}</p>
-                                    <p>Active Routes: {routes.filter(r =>
-                                        r.from.id === warehouse.id || r.to.id === warehouse.id
-                                    ).length}</p>
+                                    <p>Active Routes: {
+                                        routes.filter(r =>
+                                            r.from.id === warehouse.id || r.to.id === warehouse.id
+                                        ).length
+                                    }</p>
                                 </div>
                             </Popup>
                         </Marker>

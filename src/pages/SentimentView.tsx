@@ -29,8 +29,17 @@ import {
   ScatterChart,
   Scatter,
   AreaChart,
-  Area
+  Area,
+  Legend
 } from 'recharts';
+
+const CHART_COLORS = {
+  primary: {
+    positive: ['#059669', '#34D399', '#6EE7B7', '#A7F3D0'],
+    negative: ['#DC2626', '#F87171', '#FCA5A5', '#FEE2E2'],
+    neutral: ['#6B7280', '#9CA3AF', '#D1D5DB', '#E5E7EB']
+  }
+};
 
 interface ChartData {
   name: string;
@@ -49,6 +58,25 @@ interface RiskMetric {
   fullMark: number;
 }
 
+export interface MarketEvent {
+  type: 'positive' | 'negative';
+  sentiment_score: number;
+  description: string;
+  price_impact: number;
+}
+
+export interface MarketSentiment {
+  item: string;
+  sentiment: number;
+  trend?: 'up' | 'down';
+  impact?: number;
+  confidence?: number;
+}
+
+interface EventIndicatorProps {
+  event: MarketEvent;
+}
+
 export const SentimentView: React.FC = () => {
   const [sentimentData, setSentimentData] = useState<MarketSentiment[]>([]);
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
@@ -56,7 +84,7 @@ export const SentimentView: React.FC = () => {
   const [marketCorrelation, setMarketCorrelation] = useState<MarketCorrelation[]>([]);
   const [riskMetrics, setRiskMetrics] = useState<RiskMetric[]>([]);
   const [impactAnalysis, setImpactAnalysis] = useState<ChartData[]>([]);
-  const { isRunning, setIsRunning, simulationState } = useSimulation();
+  const { isRunning, setIsRunning, simulationState, currentMarketEvent } = useSimulation();
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
@@ -79,43 +107,49 @@ export const SentimentView: React.FC = () => {
     fetchData();
   }, []);
 
+  const applyMarketEventImpact = (value: number) => {
+    if (!currentMarketEvent) return value;
+    const impact = currentMarketEvent.type === 'positive' ? 1 + currentMarketEvent.price_impact : 1 - currentMarketEvent.price_impact;
+    return value * impact;
+  };
+
   const generateHistoricalData = () => {
     return Array.from({ length: 12 }, (_, i) => ({
       name: `Month ${i + 1}`,
-      value: Math.random() * 100
+      value: applyMarketEventImpact(Math.random() * 100)
     }));
   };
 
   const generateDistributionData = (data: MarketSentiment[]) => {
     return [
-      { name: 'Bullish', value: 30 },
-      { name: 'Neutral', value: 40 },
-      { name: 'Bearish', value: 30 }
+      { name: 'Bullish', value: applyMarketEventImpact(30) },
+      { name: 'Neutral', value: applyMarketEventImpact(40) },
+      { name: 'Bearish', value: applyMarketEventImpact(30) }
     ];
   };
 
   const generateMarketCorrelation = () => {
     return Array.from({ length: 20 }, (_, i) => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
+      x: applyMarketEventImpact(Math.random() * 100),
+      y: applyMarketEventImpact(Math.random() * 100),
       name: `Factor ${i + 1}`
     }));
   };
 
   const generateRiskMetrics = () => {
     return [
-      { subject: 'Volatility', value: Math.random() * 100, fullMark: 100 },
-      { subject: 'Market Risk', value: Math.random() * 100, fullMark: 100 },
-      { subject: 'Liquidity', value: Math.random() * 100, fullMark: 100 },
-      { subject: 'Sentiment', value: Math.random() * 100, fullMark: 100 },
-      { subject: 'Technical', value: Math.random() * 100, fullMark: 100 }
+      { subject: 'Volatility', value: applyMarketEventImpact(Math.random() * 100), fullMark: 100 },
+      { subject: 'Market Risk', value: applyMarketEventImpact(Math.random() * 100), fullMark: 100 },
+      { subject: 'Liquidity', value: applyMarketEventImpact(Math.random() * 100), fullMark: 100 },
+      { subject: 'Sentiment', value: applyMarketEventImpact(Math.random() * 100), fullMark: 100 },
+      { subject: 'Technical', value: applyMarketEventImpact(Math.random() * 100), fullMark: 100 }
     ];
   };
 
   const generateImpactAnalysis = () => {
     return Array.from({ length: 7 }, (_, i) => ({
       name: `Day ${i + 1}`,
-      value: Math.random() * 100
+      value: applyMarketEventImpact(Math.random() * 100)
     }));
   };
 
@@ -127,42 +161,42 @@ export const SentimentView: React.FC = () => {
         setSentimentData(prevData =>
           prevData.map(item => ({
             ...item,
-            sentiment: Math.max(0.1, Math.min(1, item.sentiment + (Math.random() - 0.5) * 0.1)),
+            sentiment: Math.max(0.1, Math.min(1, applyMarketEventImpact(item.sentiment + (Math.random() - 0.5) * 0.1))),
             trend: Math.random() > 0.5 ? 'up' : 'down'
           }))
         );
 
         setHistoricalData(prev => {
-          const newData = [...prev.slice(1), { name: 'New', value: Math.random() * 100 }];
+          const newData = [...prev.slice(1), { name: 'New', value: applyMarketEventImpact(Math.random() * 100) }];
           return newData.map((item, index) => ({ ...item, name: `Month ${index + 1}` }));
         });
 
         setDistributionData(prev =>
           prev.map(item => ({
             ...item,
-            value: Math.max(10, Math.min(60, item.value + (Math.random() - 0.5) * 10))
+            value: Math.max(10, Math.min(60, applyMarketEventImpact(item.value + (Math.random() - 0.5) * 10)))
           }))
         );
 
         setMarketCorrelation(prev =>
           prev.map(item => ({
             ...item,
-            x: Math.max(0, Math.min(100, item.x + (Math.random() - 0.5) * 10)),
-            y: Math.max(0, Math.min(100, item.y + (Math.random() - 0.5) * 10))
+            x: Math.max(0, Math.min(100, applyMarketEventImpact(item.x + (Math.random() - 0.5) * 10))),
+            y: Math.max(0, Math.min(100, applyMarketEventImpact(item.y + (Math.random() - 0.5) * 10)))
           }))
         );
 
         setRiskMetrics(prev =>
           prev.map(item => ({
             ...item,
-            value: Math.max(0, Math.min(100, item.value + (Math.random() - 0.5) * 10))
+            value: Math.max(0, Math.min(100, applyMarketEventImpact(item.value + (Math.random() - 0.5) * 10)))
           }))
         );
 
         setImpactAnalysis(prev =>
           prev.map(item => ({
             ...item,
-            value: Math.max(0, Math.min(100, item.value + (Math.random() - 0.5) * 10))
+            value: Math.max(0, Math.min(100, applyMarketEventImpact(item.value + (Math.random() - 0.5) * 10)))
           }))
         );
       }, 2000);
@@ -171,7 +205,17 @@ export const SentimentView: React.FC = () => {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isRunning]);
+  }, [isRunning, currentMarketEvent]);
+
+  useEffect(() => {
+    if (currentMarketEvent) {
+      setHistoricalData(generateHistoricalData());
+      setDistributionData(generateDistributionData(sentimentData));
+      setMarketCorrelation(generateMarketCorrelation());
+      setRiskMetrics(generateRiskMetrics());
+      setImpactAnalysis(generateImpactAnalysis());
+    }
+  }, [currentMarketEvent]);
 
   return (
     <div className="space-y-8 p-6">
@@ -182,8 +226,7 @@ export const SentimentView: React.FC = () => {
         </div>
 
         <motion.div
-          className={`flex items-center px-4 py-2 rounded-full ${isRunning ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-            }`}
+          className={`flex items-center px-4 py-2 rounded-full ${isRunning ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}
           animate={{ scale: isRunning ? [1, 1.05, 1] : 1 }}
           transition={{ duration: 0.5, repeat: isRunning ? Infinity : 0 }}
         >
@@ -191,6 +234,16 @@ export const SentimentView: React.FC = () => {
             <>
               <Play className="h-4 w-4 mr-2" />
               <span className="font-medium">Simulation Running</span>
+              {currentMarketEvent && (
+                <span className="ml-2 text-sm">
+                  • {currentMarketEvent.description}
+                  <span className={`ml-1 ${currentMarketEvent.type === 'positive' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                    ({currentMarketEvent.type === 'positive' ? '+' : '-'}
+                    {(currentMarketEvent.price_impact * 100).toFixed(1)}%)
+                  </span>
+                </span>
+              )}
             </>
           ) : (
             <>

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
   warehouse: Warehouse;
+  marketEvent?: any;
 }
 
 interface ValueCellProps {
@@ -14,61 +15,101 @@ interface ValueCellProps {
   previousValue: number;
   isRunning: boolean;
   marketCondition?: string;
+  type?: 'stock' | 'price';
 }
 
-const ValueCell: React.FC<ValueCellProps> = ({ value, itemKey, previousValue, isRunning, marketCondition }) => {
-  const hasIncreased = previousValue < value;
-  const hasDecreased = previousValue > value;
+const ValueCell: React.FC<ValueCellProps> = ({
+  value,
+  itemKey,
+  previousValue,
+  isRunning,
+  marketCondition,
+  type = 'price'
+}) => {
+  const hasIncreased = value > previousValue;
+  const hasDecreased = value < previousValue;
+  const [showTrend, setShowTrend] = useState(false);
+
+  useEffect(() => {
+    if (isRunning && (hasIncreased || hasDecreased)) {
+      setShowTrend(true);
+      const timer = setTimeout(() => setShowTrend(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [value, isRunning, hasIncreased, hasDecreased]);
+
+  const getColor = () => {
+    if (!isRunning) return '#1F2937';
+    if (hasIncreased) return '#059669';
+    if (hasDecreased) return '#DC2626';
+    return '#1F2937';
+  };
 
   return (
     <motion.div
       key={`${itemKey}-${value}`}
-      initial={{ scale: 0.9, opacity: 0 }}
+      initial={{ scale: 0.95, opacity: 0 }}
       animate={{
         scale: 1,
         opacity: 1,
-        color: hasIncreased ? '#059669' : hasDecreased ? '#DC2626' : '#1F2937'
+        color: getColor(),
+        transition: { duration: 0.3 }
       }}
-      transition={{ duration: 0.3 }}
-      className="flex items-center"
+      className="flex items-center space-x-2"
     >
-      ₹{value.toFixed(2)}
-      {isRunning && (hasIncreased || hasDecreased) && (
-        <motion.span
-          initial={{ opacity: 0, x: hasIncreased ? -10 : 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.2 }}
-          className="ml-2"
-        >
-          {hasIncreased ? (
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          ) : (
-            <TrendingDown className="h-4 w-4 text-red-500" />
-          )}
-        </motion.span>
-      )}
+      <span className="font-medium">
+        {type === 'price' ? `₹${value.toFixed(2)}` : value.toLocaleString()}
+      </span>
+      <AnimatePresence mode="wait">
+        {showTrend && (
+          <motion.span
+            key={`trend-${value}`}
+            initial={{ opacity: 0, y: hasIncreased ? 10 : -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className={`inline-flex items-center ${hasIncreased ? 'text-green-500' : 'text-red-500'}`}
+          >
+            {hasIncreased ? (
+              <TrendingUp className="h-4 w-4" />
+            ) : (
+              <TrendingDown className="h-4 w-4" />
+            )}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
 
-export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
+export const WarehouseTable: React.FC<Props> = ({ warehouse, marketEvent }) => {
   const { isRunning } = useSimulation();
   const [previousValues, setPreviousValues] = useState<Record<string, number>>({});
   const [currentValues, setCurrentValues] = useState<Record<string, number>>({});
   const [marketConditions, setMarketConditions] = useState<Record<string, string>>({});
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Unique factors for each warehouse
+  const locationFactor = useRef(Math.random() * 0.5 + 0.75);
+  const volatilityFactor = useRef(Math.random() * 0.3 + 0.85);
+  const marketSensitivity = useRef(Math.random() * 0.4 + 0.8);
+
   useEffect(() => {
     if (warehouse?.inventory) {
       const newValues: Record<string, number> = {};
       const newMarketConditions: Record<string, string> = {};
       warehouse.inventory.forEach(item => {
-        newValues[`${item.item}-stock`] = item.stock;
-        newValues[`${item.item}-buy`] = item.buyPrice;
-        newValues[`${item.item}-sell`] = item.sellPrice;
-        newMarketConditions[item.item] = item.marketCondition;
+        // Apply location-based price adjustments
+        const baseStock = item.stock;
+        const baseBuyPrice = item.buyPrice * locationFactor.current;
+        const baseSellPrice = item.sellPrice * (locationFactor.current * 1.1);
+
+        newValues[`${warehouse.id}-${item.item}-stock`] = baseStock;
+        newValues[`${warehouse.id}-${item.item}-buy`] = baseBuyPrice;
+        newValues[`${warehouse.id}-${item.item}-sell`] = baseSellPrice;
+        newMarketConditions[`${warehouse.id}-${item.item}`] = Math.random() > 0.5 ? 'bullish' : 'bearish';
       });
-      setPreviousValues(newValues);
+      setPreviousValues(currentValues);
       setCurrentValues(newValues);
       setMarketConditions(newMarketConditions);
     }
@@ -77,42 +118,64 @@ export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => {
+        setPreviousValues(currentValues);
+
         setCurrentValues(prev => {
           const updated = { ...prev };
-          Object.keys(marketConditions).forEach(item => {
-            const isBullish = marketConditions[item]?.toLowerCase() === 'bullish';
-            const marketFactor = isBullish ? 1 : -1;
+          Object.keys(marketConditions).forEach(itemKey => {
+            const isBullish = marketConditions[itemKey]?.toLowerCase() === 'bullish';
+            const marketFactor = (isBullish ? 1 : -1) * marketSensitivity.current;
+            const eventImpact = marketEvent ?
+              (marketEvent.type === 'positive' ? 1 : -1) * marketEvent.price_impact * volatilityFactor.current : 0;
 
-            // Update stock
-            const stockKey = `${item}-stock`;
+            // Stock updates
+            const stockKey = `${itemKey}-stock`;
             if (updated[stockKey] !== undefined) {
-              const stockChange = (Math.random() * 3 - 1) * marketFactor;
-              updated[stockKey] = Math.max(0, updated[stockKey] + Math.round(stockChange));
+              const baseChange = Math.floor((Math.random() * 8 - 3) * volatilityFactor.current);
+              const stockChange = (baseChange + (eventImpact * 15)) * marketFactor;
+              updated[stockKey] = Math.max(0, updated[stockKey] + stockChange);
             }
 
-            // Update prices
-            ['buy', 'sell'].forEach(priceType => {
-              const priceKey = `${item}-${priceType}`;
-              if (updated[priceKey] !== undefined) {
-                const priceChange = (Math.random() * 2 - 1) * marketFactor;
-                updated[priceKey] = Math.max(0, +(updated[priceKey] + priceChange).toFixed(2));
-              }
-            });
+            // Price updates with warehouse-specific modifiers
+            const buyKey = `${itemKey}-buy`;
+            const sellKey = `${itemKey}-sell`;
+
+            if (updated[buyKey] !== undefined) {
+              const buyBaseChange = (Math.random() * 3 - 1.5) * volatilityFactor.current * marketFactor;
+              const buyEventModifier = eventImpact * updated[buyKey] * 0.15;
+              updated[buyKey] = Math.max(1, +(updated[buyKey] + buyBaseChange + buyEventModifier).toFixed(2));
+            }
+
+            if (updated[sellKey] !== undefined) {
+              const sellBaseChange = (Math.random() * 3.5 - 1.75) * volatilityFactor.current * marketFactor;
+              const sellEventModifier = eventImpact * updated[sellKey] * 0.18;
+              const minSellPrice = updated[buyKey] * 1.1; // Minimum 10% markup
+              updated[sellKey] = Math.max(
+                minSellPrice,
+                +(updated[sellKey] + sellBaseChange + sellEventModifier).toFixed(2)
+              );
+            }
           });
           return updated;
         });
 
+        // Dynamic market conditions with warehouse-specific changes
         setMarketConditions(prev => {
           const updated = { ...prev };
           Object.keys(updated).forEach(key => {
-            if (Math.random() > 0.9) {
-              updated[key] = Math.random() > 0.5 ? 'bullish' : 'bearish';
+            if (Math.random() > 0.9 * volatilityFactor.current) {
+              const currentCondition = updated[key];
+              const rand = Math.random() * marketSensitivity.current;
+
+              if (currentCondition === 'bullish') {
+                updated[key] = rand > 0.65 ? 'bearish' : 'bullish';
+              } else {
+                updated[key] = rand > 0.65 ? 'bullish' : 'bearish';
+              }
             }
           });
           return updated;
         });
-
-        setPreviousValues(currentValues);
       }, 1000);
     }
 
@@ -121,7 +184,7 @@ export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isRunning, marketConditions, currentValues]);
+  }, [isRunning, marketConditions, marketEvent]);
 
   const getMarketIcon = (condition: string = '') => {
     switch (condition.toLowerCase()) {
@@ -162,41 +225,43 @@ export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            <AnimatePresence mode="wait">
+            <AnimatePresence>
               {warehouse.inventory.map((item, index) => (
                 <motion.tr
                   key={`${warehouse.id}-${item.item}-${index}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
                   className="hover:bg-gray-50"
                 >
                   <td className="px-4 py-3 text-sm text-gray-900">{item.item}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     <ValueCell
-                      value={currentValues[`${item.item}-stock`] || item.stock}
-                      itemKey={`${item.item}-stock`}
-                      previousValue={previousValues[`${item.item}-stock`] || 0}
+                      value={currentValues[`${warehouse.id}-${item.item}-stock`] || item.stock}
+                      itemKey={`${warehouse.id}-${item.item}-stock`}
+                      previousValue={previousValues[`${warehouse.id}-${item.item}-stock`] || 0}
                       isRunning={isRunning}
-                      marketCondition={marketConditions[item.item]}
+                      marketCondition={marketConditions[`${warehouse.id}-${item.item}`]}
+                      type="stock"
                     />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     <ValueCell
-                      value={currentValues[`${item.item}-buy`] || item.buyPrice}
-                      itemKey={`${item.item}-buy`}
-                      previousValue={previousValues[`${item.item}-buy`] || 0}
+                      value={currentValues[`${warehouse.id}-${item.item}-buy`] || item.buyPrice}
+                      itemKey={`${warehouse.id}-${item.item}-buy`}
+                      previousValue={previousValues[`${warehouse.id}-${item.item}-buy`] || 0}
                       isRunning={isRunning}
-                      marketCondition={marketConditions[item.item]}
+                      marketCondition={marketConditions[`${warehouse.id}-${item.item}`]}
                     />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     <ValueCell
-                      value={currentValues[`${item.item}-sell`] || item.sellPrice}
-                      itemKey={`${item.item}-sell`}
-                      previousValue={previousValues[`${item.item}-sell`] || 0}
+                      value={currentValues[`${warehouse.id}-${item.item}-sell`] || item.sellPrice}
+                      itemKey={`${warehouse.id}-${item.item}-sell`}
+                      previousValue={previousValues[`${warehouse.id}-${item.item}-sell`] || 0}
                       isRunning={isRunning}
-                      marketCondition={marketConditions[item.item]}
+                      marketCondition={marketConditions[`${warehouse.id}-${item.item}`]}
                     />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
@@ -205,8 +270,10 @@ export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.2 }}
                     >
-                      {getMarketIcon(marketConditions[item.item])}
-                      <span className="ml-2">{marketConditions[item.item] || 'Unknown'}</span>
+                      {getMarketIcon(marketConditions[`${warehouse.id}-${item.item}`])}
+                      <span className="ml-2 capitalize">
+                        {marketConditions[`${warehouse.id}-${item.item}`] || 'Unknown'}
+                      </span>
                     </motion.div>
                   </td>
                 </motion.tr>
@@ -218,3 +285,5 @@ export const WarehouseTable: React.FC<Props> = ({ warehouse }) => {
     </div>
   );
 };
+
+export default WarehouseTable;

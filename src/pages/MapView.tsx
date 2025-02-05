@@ -3,11 +3,22 @@ import { EnhancedWarehouseMap } from '../components/EnhancedWarehouseMap';
 import { SpeedControl } from '../components/SpeedControl';
 import { SimulationControl } from '../components/SimulationControl';
 import { WarehouseTable } from '../components/WarehouseTable';
+import { MarketEventSelector } from '../components/MarketEventSelector';
 import { Warehouse, SimulationSpeed } from '../types';
 import { useSimulation } from '../context/SimulationContext';
-import { getWarehouseData } from '../services/api';
+import { getWarehouseData, getMarketEvents } from '../services/api';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Package, Boxes, ShoppingCart, BarChart, Clock } from 'lucide-react';
+import { useEvent } from '../context/EventContext';
+import {
+  TrendingUp,
+  TrendingDown,
+  Package,
+  Boxes,
+  ShoppingCart,
+  BarChart,
+  Clock,
+  AlertTriangle
+} from 'lucide-react';
 
 interface Props {
   warehouses: Warehouse[];
@@ -22,10 +33,12 @@ export const MapView: React.FC<Props> = ({
   speed,
   onSpeedChange
 }) => {
+  const { selectedEvent, setSelectedEvent } = useEvent();
   const { isRunning, setIsRunning, simulationState } = useSimulation();
   const [currentWarehouses, setCurrentWarehouses] = useState<Warehouse[]>(warehouses);
   const [currentStock, setCurrentStock] = useState(simulatedStock);
   const [previousStock, setPreviousStock] = useState(simulatedStock);
+  const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +50,8 @@ export const MapView: React.FC<Props> = ({
     avgProcessingTime: 45,
     totalOrders: 1200,
     capacityUsed: 75,
-    lastUpdated: Date.now()
+    lastUpdated: Date.now(),
+    marketImpact: 0
   });
 
   function calculateInitialValue(warehouses: Warehouse[]): number {
@@ -55,15 +69,13 @@ export const MapView: React.FC<Props> = ({
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const data = await getWarehouseData();
-        const transformedData = warehouses.map(warehouse => ({
-          ...warehouse,
-          inventory: warehouse.inventory.map(item => ({
-            ...item,
-            item: data.items.find((i: string) => i === item.item) || item.item
-          }))
-        }));
-        setCurrentWarehouses(transformedData);
+        const [warehouseData, eventsData] = await Promise.all([
+          getWarehouseData(),
+          getMarketEvents()
+        ]);
+
+        setCurrentWarehouses(warehouseData.warehouses);
+        setMarketEvents(eventsData.events);
         setError(null);
       } catch (error) {
         console.error('Error:', error);
@@ -73,41 +85,65 @@ export const MapView: React.FC<Props> = ({
       }
     };
     fetchData();
-  }, [warehouses]);
+  }, []);
+
+  function calculateTotalStock(warehouses: Warehouse[]): number {
+    return warehouses.reduce((total, warehouse) => {
+      return total + warehouse.inventory.reduce((warehouseTotal, item) => {
+        return warehouseTotal + item.stock;
+      }, 0);
+    }, 0);
+  }
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
     if (isRunning) {
-      setCurrentStock(simulatedStock);
-      setPreviousStock(prev => prev !== simulatedStock ? currentStock : prev);
+      const timer = setInterval(() => {
+        setCurrentWarehouses(prevWarehouses => {
+          const updatedWarehouses = prevWarehouses.map(warehouse => ({
+            ...warehouse,
+            inventory: warehouse.inventory.map(item => {
+              const stockChange = Math.floor((Math.random() - 0.5) * 10);
+              return {
+                ...item,
+                stock: Math.max(0, item.stock + stockChange)
+              };
+            })
+          }));
 
-      intervalId = setInterval(() => {
-        const timeDiff = (Date.now() - metrics.lastUpdated) / 1000;
+          const newTotalStock = calculateTotalStock(updatedWarehouses);
 
-        setMetrics(prev => ({
-          totalValue: calculateInitialValue(currentWarehouses) * (1 + (Math.random() - 0.5) * 0.1),
-          orderRate: Math.floor(45 + Math.random() * 20),
-          utilization: calculateUtilization(currentStock),
-          turnoverRate: Math.floor(10 + Math.random() * 10),
-          avgProcessingTime: Math.floor(30 + Math.random() * 30),
-          totalOrders: prev.totalOrders + Math.floor(timeDiff * (prev.orderRate / 3600)),
-          capacityUsed: Math.min(100, prev.capacityUsed + (Math.random() - 0.5) * 5),
-          lastUpdated: Date.now()
-        }));
-      }, 1000);
+          const adjustedStock = selectedEvent?.type === 'negative'
+            ? Math.floor(newTotalStock * (1 - Math.abs(selectedEvent.supply_impact)))
+            : selectedEvent?.type === 'positive'
+              ? Math.floor(newTotalStock * (1 + selectedEvent.supply_impact))
+              : newTotalStock;
+
+          setPreviousStock(currentStock);
+          setCurrentStock(adjustedStock);
+
+          setMetrics(prev => ({
+            ...prev,
+            totalValue: calculateInitialValue(updatedWarehouses),
+            utilization: calculateUtilization(adjustedStock),
+            orderRate: Math.floor(45 + Math.random() * 20),
+            turnoverRate: Math.floor(10 + Math.random() * 10),
+            lastUpdated: Date.now()
+          }));
+
+          return updatedWarehouses;
+        });
+      }, speed === 'fast' ? 500 : speed === 'slow' ? 2000 : 1000);
+
+      return () => clearInterval(timer);
     }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isRunning, simulationState, simulatedStock]);
+  }, [isRunning, selectedEvent, currentStock, speed]);
 
   const handleReset = () => {
     setCurrentWarehouses(warehouses);
     setIsRunning(false);
     setCurrentStock(simulatedStock);
     setPreviousStock(simulatedStock);
+    setSelectedEvent(null);
     setMetrics({
       totalValue: calculateInitialValue(warehouses),
       orderRate: 50,
@@ -116,7 +152,8 @@ export const MapView: React.FC<Props> = ({
       avgProcessingTime: 45,
       totalOrders: 1200,
       capacityUsed: 75,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      marketImpact: 0
     });
   };
 
@@ -135,6 +172,12 @@ export const MapView: React.FC<Props> = ({
           />
         </div>
       </div>
+
+      <MarketEventSelector
+        events={marketEvents}
+        selectedEvent={selectedEvent}
+        onEventSelect={setSelectedEvent}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.div
@@ -167,18 +210,17 @@ export const MapView: React.FC<Props> = ({
         <motion.div className="bg-white p-4 rounded-lg shadow-lg">
           <div className="flex justify-between">
             <div>
-              <p className="text-gray-500">Total Value</p>
+              <p className="text-gray-500">Market Impact</p>
               <h3 className="text-2xl font-bold">
-                ₹{metrics.totalValue.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })}
+                {selectedEvent ? (
+                  <span className={selectedEvent.type === 'positive' ? 'text-green-600' : 'text-red-600'}>
+                    {(selectedEvent.sentiment_score * 100).toFixed(1)}%
+                  </span>
+                ) : 'No Event'}
               </h3>
             </div>
-            <BarChart className="text-blue-500" />
-          </div>
-          <div className="mt-2 text-sm text-blue-600">
-            {metrics.orderRate} orders/hour
+            <AlertTriangle className={`${selectedEvent?.type === 'positive' ? 'text-green-500' : 'text-red-500'
+              }`} />
           </div>
         </motion.div>
 
@@ -218,6 +260,7 @@ export const MapView: React.FC<Props> = ({
         <EnhancedWarehouseMap
           warehouses={currentWarehouses}
           simulatedStock={currentStock}
+          selectedEvent={selectedEvent}
         />
       </section>
 
@@ -226,6 +269,7 @@ export const MapView: React.FC<Props> = ({
           <WarehouseTable
             key={`warehouse-table-${warehouse.id || warehouse.name}`}
             warehouse={warehouse}
+            marketEvent={selectedEvent}
           />
         ))}
       </section>

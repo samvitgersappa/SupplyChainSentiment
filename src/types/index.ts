@@ -33,6 +33,20 @@ export interface SimulationState {
   timestamp: Date;
 }
 
+export interface MarketEvent {
+  event_id: string;
+  type: 'positive' | 'negative';
+  sentiment_score: number;
+  price_impact: number;
+  supply_impact: number;
+  description: string;
+  created_at?: Date;
+  active?: boolean;
+  last_triggered?: Date | null;
+}
+
+
+
 export const connectWebSocket = (onMessage: (data: any) => void) => {
   const socket = new WebSocket('ws://localhost:8000/ws/simulation');
 
